@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Zscaler SSE Architecture — 11 Global Sites — Zero Trust Design</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <style>*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}body{background:#0a0e1a;font-family:'JetBrains Mono','SF Mono',monospace}#root{min-height:100vh}</style>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState } = React;
+const C={bg:"#0a0e1a",bgS:"#111827",pan:"#1a2035",brd:"#2a3555",zs:"#0090d1",zsD:"#0090d118",zsL:"#00b4ff",acc:"#00d4aa",accD:"#00d4aa22",ora:"#ff8c42",blu:"#4a9eff",bluD:"#4a9eff22",pur:"#a78bfa",red:"#f87171",yel:"#facc15",cya:"#22d3ee",pnk:"#f472b6",mrk:"#6ede87",mrkD:"#6ede8718",txt:"#e2e8f0",mut:"#8892a8",dim:"#4a5568",aws:"#FF9900",awsD:"#FF990018",ln:"#2a3555"};
+const RC={EMEA:C.pur,AMER:C.cya,APAC:C.pnk,INDIA:C.yel};
+const sites=[
+  {r:"EMEA",city:"London",co:"UK",u:100,t:"Aldermary (Own Office)",pop:"London",lat:"<2ms",mx:"MX85",mxN:"1U Rack • 1Gbps FW"},
+  {r:"EMEA",city:"Manchester",co:"UK",u:60,t:"Serviced Office",pop:"London",lat:"~6ms",mx:"MX75",mxN:"Desktop • 1Gbps FW"},
+  {r:"AMER",city:"Boston",co:"US",u:6,t:"Serviced Office",pop:"New York",lat:"~4ms",mx:"MX67",mxN:"Desktop • 450Mbps"},
+  {r:"AMER",city:"Dallas",co:"US",u:18,t:"Serviced Office",pop:"Dallas",lat:"<2ms",mx:"MX67",mxN:"Desktop • 450Mbps"},
+  {r:"APAC",city:"Sydney",co:"AU",u:10,t:"Serviced Office",pop:"Sydney",lat:"<2ms",mx:"MX67",mxN:"Desktop • 450Mbps"},
+  {r:"APAC",city:"Singapore",co:"SG",u:7,t:"Serviced Office",pop:"Singapore",lat:"<2ms",mx:"MX67",mxN:"Desktop • 450Mbps"},
+  {r:"APAC",city:"Tokyo",co:"JP",u:2,t:"Serviced Office",pop:"Tokyo",lat:"<2ms",mx:"MX67",mxN:"Desktop • 450Mbps"},
+  {r:"APAC",city:"Kuala Lumpur",co:"MY",u:3,t:"Serviced Office",pop:"Singapore",lat:"~8ms",mx:"MX67",mxN:"Desktop • 450Mbps"},
+  {r:"INDIA",city:"Gurgaon",co:"IN",u:86,t:"Serviced Office",pop:"Mumbai / Delhi",lat:"~5ms",mx:"MX85",mxN:"1U Rack • 1Gbps FW"},
+  {r:"INDIA",city:"Noida",co:"IN",u:42,t:"Serviced Office",pop:"Mumbai / Delhi",lat:"~5ms",mx:"MX75",mxN:"Desktop • 1Gbps FW"},
+  {r:"INDIA",city:"Bangalore",co:"IN",u:62,t:"New Office",pop:"Chennai",lat:"~6ms",mx:"MX75",mxN:"Desktop • 1Gbps FW"},
+];
+const total=sites.reduce((s,x)=>s+x.u,0);
+const maxU=Math.max(...sites.map(s=>s.u));
+const regs=["EMEA","AMER","APAC","INDIA"].map(n=>({n,c:RC[n],s:sites.filter(x=>x.r===n)}));
+const AD=({d,c,dl=0,w=2})=><g><path d={d} fill="none" stroke={c} strokeWidth={1} opacity={.08}/><path d={d} fill="none" stroke={c} strokeWidth={w} strokeDasharray="6 8" opacity={.7}><animate attributeName="stroke-dashoffset" from="100" to="-100" dur="3s" begin={`${dl}s`} repeatCount="indefinite"/></path></g>;
+const Bg=({x,y,text,c,sm})=><g><rect x={x} y={y} width={text.length*(sm?5.5:6.5)+12} height={sm?15:18} rx={sm?7:9} fill={c} opacity={.15} stroke={c} strokeWidth={.5}/><text x={x+6} y={y+(sm?10.5:12.5)} fill={c} fontSize={sm?8:9} fontWeight={500} fontFamily="'JetBrains Mono',monospace">{text}</text></g>;
+const Pulse=({cx,cy,c,dl=0})=><circle cx={cx} cy={cy} r={3} fill={c}><animate attributeName="r" values="2;5;2" dur="2s" begin={`${dl}s`} repeatCount="indefinite"/><animate attributeName="opacity" values="1;.3;1" dur="2s" begin={`${dl}s`} repeatCount="indefinite"/></circle>;
+const F="'JetBrains Mono','SF Mono',monospace";
+
+function App(){
+  const [hov,setHov]=useState(null);
+  const W=1340,H=1200;
+  return(
+  <div style={{background:C.bg,minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",padding:"24px 16px",fontFamily:F}}>
+  <div style={{maxWidth:1380,width:"100%"}}>
+    <div style={{marginBottom:20,display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:12}}>
+      <div>
+        <div style={{color:C.zs,fontSize:10,letterSpacing:3,textTransform:"uppercase",marginBottom:4}}>Security Service Edge Strategy</div>
+        <h1 style={{color:C.txt,fontSize:22,fontWeight:700,margin:0}}>Zscaler SSE — Zero Trust Architecture</h1>
+        <p style={{color:C.mut,fontSize:11,margin:"4px 0 0"}}>{total} Users — 11 Sites — 160+ PoPs — Meraki Edge — Private DC — AWS</p>
+      </div>
+      <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
+        {[{c:C.zs,l:"Zscaler ZTE (ZIA + ZPA)"},{c:C.mrk,l:"Meraki MX Edge"},{c:C.acc,l:"ZPA App Connector"},{c:C.aws,l:"AWS Cloud"},{c:C.ora,l:"Inspected Internet"}].map((x,i)=>
+          <div key={i} style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:18,height:3,background:x.c,borderRadius:2}}/><span style={{color:C.mut,fontSize:9}}>{x.l}</span></div>
+        )}
+      </div>
+    </div>
+
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{background:C.bgS,borderRadius:12,border:`1px solid ${C.brd}`}}>
+      <defs><pattern id="g" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke={C.ln} strokeWidth={.3} opacity={.3}/></pattern></defs>
+      <rect width={W} height={H} fill="url(#g)"/>
+
+      {/* ═══ LEFT: OFFICES + MERAKI + ZCC ═══ */}
+      <rect x={15} y={15} width={340} height={870} rx={12} fill={C.mrkD} stroke={C.mrk} strokeWidth={.5} strokeDasharray="4 4" opacity={.4}/>
+      <text x={30} y={40} fill={C.txt} fontSize={11} fontWeight={700} letterSpacing={2}>REMOTE OFFICES + EDGE</text>
+      <text x={30} y={54} fill={C.mut} fontSize={8}>Meraki MX + Zscaler Client Connector at every site</text>
+
+      {(()=>{
+        let y=68; const el=[];
+        regs.forEach((reg,ri)=>{
+          const ru=reg.s.reduce((a,b)=>a+b.u,0);
+          el.push(<g key={`rh${ri}`}><rect x={23} y={y} width={324} height={18} rx={3} fill={reg.c} opacity={.08}/><text x={32} y={y+13} fill={reg.c} fontSize={9} fontWeight={700} letterSpacing={2}>{reg.n}</text><text x={280} y={y+13} fill={reg.c} fontSize={8} fontWeight={600} textAnchor="end">{ru} users</text><Bg x={285} y={y+1} text={`${reg.s.length}`} c={reg.c} sm/></g>);
+          y+=21;
+          reg.s.forEach((site,si)=>{
+            const sy=y,isH=hov===`${ri}-${si}`;
+            el.push(
+              <g key={`s${ri}${si}`} onMouseEnter={()=>setHov(`${ri}-${si}`)} onMouseLeave={()=>setHov(null)} style={{cursor:"default"}}>
+                <rect x={28} y={sy} width={318} height={52} rx={5} fill={isH?reg.c:C.pan} fillOpacity={isH?.12:.95} stroke={isH?reg.c:C.brd} strokeWidth={isH?1.5:1}/>
+                {/* MX icon */}
+                <rect x={36} y={sy+7} width={16} height={10} rx={2} fill="none" stroke={C.mrk} strokeWidth={1.2}/>
+                <circle cx={41} cy={sy+12} r={1} fill={C.mrk}/><circle cx={45} cy={sy+12} r={1} fill={C.mrk}/>
+                <text x={56} y={sy+14} fill={C.txt} fontSize={9.5} fontWeight={600}>{site.city}, {site.co}</text>
+                <text x={56} y={sy+25} fill={C.mut} fontSize={7}>{site.t}</text>
+                {/* Meraki model + PoP */}
+                <rect x={56} y={sy+29} width={site.mx.length*6+10} height={12} rx={3} fill={C.mrk} opacity={.15} stroke={C.mrk} strokeWidth={.5}/>
+                <text x={61} y={sy+38} fill={C.mrk} fontSize={6.5} fontWeight={700}>{site.mx}</text>
+                <text x={56+site.mx.length*6+16} y={sy+38} fill={C.zs} fontSize={6.5}>PoP: <tspan fontWeight={600}>{site.pop}</tspan></text>
+                <rect x={160} y={sy+30} width={44} height={13} rx={6} fill={C.acc} opacity={.15} stroke={C.acc} strokeWidth={.5}/>
+                <text x={167} y={sy+40} fill={C.acc} fontSize={7} fontWeight={700}>{site.lat}</text>
+                {/* ZCC */}
+                <rect x={213} y={sy+30} width={26} height={13} rx={3} fill={C.zs} opacity={.15} stroke={C.zs} strokeWidth={.5}/>
+                <text x={217} y={sy+40} fill={C.zs} fontSize={6.5} fontWeight={600}>ZCC</text>
+                {/* User badge */}
+                <rect x={270} y={sy+6} width={64} height={18} rx={9} fill={reg.c} opacity={.15} stroke={reg.c} strokeWidth={.5}/>
+                <text x={282} y={sy+19} fill={reg.c} fontSize={9} fontWeight={700}>{site.u}</text>
+                <text x={300} y={sy+18} fill={reg.c} fontSize={6.5} opacity={.7}>users</text>
+                {/* Mini bar */}
+                <rect x={270} y={sy+30} width={64} height={2.5} rx={1} fill={reg.c} opacity={.1}/>
+                <rect x={270} y={sy+30} width={(site.u/maxU)*64} height={2.5} rx={1} fill={reg.c} opacity={.5}/>
+              </g>
+            );
+            y+=56;
+          });
+          y+=5;
+        });
+        // Meraki callout
+        el.push(<g key="mrk">
+          <rect x={28} y={y+2} width={318} height={62} rx={5} fill={C.pan} stroke={C.mrk} strokeWidth={1}/>
+          <rect x={36} y={y+10} width={20} height={12} rx={2} fill="none" stroke={C.mrk} strokeWidth={1.5}/>
+          <circle cx={42} cy={y+16} r={1.5} fill={C.mrk}/><circle cx={48} cy={y+16} r={1.5} fill={C.mrk}/>
+          <text x={60} y={y+17} fill={C.mrk} fontSize={9.5} fontWeight={700}>Cisco Meraki MX — Every Site + DC</text>
+          <text x={60} y={y+30} fill={C.mut} fontSize={7.5}>• MX67/67W (≤50 users) | MX75 (≤200) | MX85 (≤300)</text>
+          <text x={60} y={y+41} fill={C.mut} fontSize={7.5}>• MX95 at Private DC (2Gbps FW, inter-VLAN, ACLs)</text>
+          <text x={60} y={y+52} fill={C.mut} fontSize={7.5}>• IPsec to ZIA PoP • Meraki Dashboard cloud-managed</text>
+        </g>);
+        // ZCC callout
+        el.push(<g key="zcc">
+          <rect x={28} y={y+70} width={318} height={52} rx={5} fill={C.pan} stroke={C.zs} strokeWidth={1}/>
+          <rect x={36} y={y+78} width={20} height={12} rx={2} fill="none" stroke={C.zsL} strokeWidth={1.2}/>
+          <text x={38} y={y+87} fill={C.zsL} fontSize={6} fontWeight={700}>ZCC</text>
+          <text x={60} y={y+87} fill={C.txt} fontSize={9.5} fontWeight={700}>Zscaler Client Connector</text>
+          <text x={60} y={y+100} fill={C.mut} fontSize={7.5}>Installed on all {total} devices — auto-steers traffic</text>
+          <text x={60} y={y+111} fill={C.mut} fontSize={7.5}>ZIA tunnel (web/SaaS) + ZPA tunnel (private apps)</text>
+        </g>);
+        return el;
+      })()}
+
+      {/* ═══ Tunnel lines: Offices → ZTE ═══ */}
+      {(()=>{
+        const el=[]; let ay=68+21+26, idx=0;
+        regs.forEach(reg=>{reg.s.forEach(()=>{
+          el.push(<AD key={`t${idx}`} d={`M 346 ${ay} C 375 ${ay},390 ${330},410 ${330}`} c={C.zs} dl={idx*.09} w={1.5}/>);
+          ay+=56; idx++;
+        });ay+=5;});
+        return el;
+      })()}
+
+      {/* ═══ CENTER: ZSCALER ZERO TRUST EXCHANGE ═══ */}
+      <rect x={395} y={15} width={445} height={870} rx={12} fill={C.zsD} stroke={C.zs} strokeWidth={.8} strokeDasharray="4 4" opacity={.5}/>
+      <ellipse cx={617} cy={30} rx={90} ry={8} fill={C.zs} opacity={.04}/>
+      <text x={415} y={40} fill={C.zs} fontSize={12} fontWeight={700} letterSpacing={2}>ZSCALER ZERO TRUST EXCHANGE</text>
+      <text x={415} y={54} fill={C.mut} fontSize={8}>160+ PoPs — SSE Platform — Cloud-Native Security</text>
+
+      {/* ZIA */}
+      <rect x={410} y={68} width={415} height={205} rx={8} fill={C.pan} stroke={C.zs} strokeWidth={1.5}/>
+      <rect x={420} y={76} width={160} height={22} rx={4} fill={C.zs} opacity={.2}/>
+      <text x={432} y={92} fill={C.zsL} fontSize={12} fontWeight={700}>ZIA</text>
+      <text x={462} y={92} fill={C.zs} fontSize={9}>Zscaler Internet Access</text>
+      <text x={420} y={114} fill={C.txt} fontSize={10} fontWeight={600}>Secure Web Gateway + Cloud Firewall</text>
+      <text x={420} y={130} fill={C.mut} fontSize={7.5}>• Full SSL/TLS inspection at cloud scale (all {total} users)</text>
+      <text x={420} y={142} fill={C.mut} fontSize={7.5}>• Cloud Firewall + IPS + Advanced Threat Protection</text>
+      <text x={420} y={154} fill={C.mut} fontSize={7.5}>• Cloud Sandbox — zero-day malware detonation</text>
+      <text x={420} y={166} fill={C.mut} fontSize={7.5}>• URL / Content Filtering + CASB (inline + API)</text>
+      <text x={420} y={178} fill={C.mut} fontSize={7.5}>• Data Loss Prevention (DLP) — all channels</text>
+      <text x={420} y={190} fill={C.mut} fontSize={7.5}>• Browser Isolation — risky/uncategorised sites</text>
+      <text x={420} y={202} fill={C.mut} fontSize={7.5}>• Bandwidth Control + DNS Security</text>
+      <Bg x={420} y={212} text="SWG" c={C.zs}/>
+      <Bg x={470} y={212} text="CASB" c={C.zs}/>
+      <Bg x={524} y={212} text="DLP" c={C.zs}/>
+      <Bg x={568} y={212} text="FWaaS" c={C.zs}/>
+      <Bg x={628} y={212} text="Sandbox" c={C.zs}/>
+      <Bg x={700} y={212} text="ATP" c={C.zs}/>
+      <text x={420} y={248} fill={C.mut} fontSize={7.5}>Meraki MX tunnels office traffic (IPsec) → ZIA inspects → Internet</text>
+      <text x={420} y={260} fill={C.mut} fontSize={7.5}>ZCC on roaming devices → ZIA inspects → Internet (identical policy)</text>
+      {/* ZIA internet arrow */}
+      <AD d="M 825 158 L 855 158" c={C.ora} dl={0} w={2.5}/>
+
+      {/* ZPA */}
+      <rect x={410} y={286} width={415} height={195} rx={8} fill={C.pan} stroke={C.acc} strokeWidth={1.5}/>
+      <rect x={420} y={294} width={180} height={22} rx={4} fill={C.acc} opacity={.2}/>
+      <text x={432} y={310} fill={C.acc} fontSize={12} fontWeight={700}>ZPA</text>
+      <text x={462} y={310} fill={C.acc} fontSize={9}>Zscaler Private Access (ZTNA)</text>
+      <text x={420} y={332} fill={C.txt} fontSize={10} fontWeight={600}>Zero Trust Network Access to Private Apps</text>
+      <text x={420} y={348} fill={C.mut} fontSize={7.5}>• Users connect to apps, never the network — zero lateral movement</text>
+      <text x={420} y={360} fill={C.mut} fontSize={7.5}>• Inside-out App Connectors (DC + AWS) — no inbound ports</text>
+      <text x={420} y={372} fill={C.mut} fontSize={7.5}>• ZPA Service Edge brokers user ↔ app micro-tunnels</text>
+      <text x={420} y={384} fill={C.mut} fontSize={7.5}>• Identity-based segmentation — IdP / SAML / MFA + device posture</text>
+      <text x={420} y={396} fill={C.mut} fontSize={7.5}>• AI-powered app discovery + autonomous segmentation</text>
+      <text x={420} y={408} fill={C.mut} fontSize={7.5}>• Apps completely invisible to the public internet</text>
+      <Bg x={420} y={418} text="ZTNA" c={C.acc}/>
+      <Bg x={478} y={418} text="Micro-Tunnel" c={C.acc}/>
+      <Bg x={578} y={418} text="App Segmentation" c={C.acc}/>
+      <Bg x={700} y={418} text="AI" c={C.acc}/>
+      <text x={420} y={456} fill={C.mut} fontSize={7.5}>Per-app policy for DC internal apps + AWS workloads — unified console</text>
+      <text x={420} y={468} fill={C.dim} fontSize={7}>ZPA Service Edge stitches ZCC tunnel + App Connector tunnel — then gets out of the way</text>
+      {/* ZPA → DC/AWS arrows */}
+      <AD d="M 825 380 L 855 380" c={C.acc} dl={0} w={2.5}/>
+
+      {/* ═══ PoP Latency Mapping ═══ */}
+      <rect x={410} y={496} width={415} height={205} rx={8} fill={C.pan} stroke={C.zs} strokeWidth={1}/>
+      <text x={425} y={516} fill={C.zs} fontSize={10} fontWeight={700}>Nearest Zscaler PoP per Office — Latency Advantage</text>
+      <text x={425} y={530} fill={C.dim} fontSize={7}>Estimated round-trip to nearest ZIA/ZPA Service Edge</text>
+      {(()=>{
+        const el=[]; let ty=546;
+        el.push(<g key="ph"><text x={425} y={ty} fill={C.dim} fontSize={7} fontWeight={600}>OFFICE</text><text x={525} y={ty} fill={C.dim} fontSize={7} fontWeight={600}>MERAKI</text><text x={580} y={ty} fill={C.dim} fontSize={7} fontWeight={600}>NEAREST PoP</text><text x={680} y={ty} fill={C.dim} fontSize={7} fontWeight={600}>LATENCY</text><text x={740} y={ty} fill={C.dim} fontSize={7} fontWeight={600}>USERS</text></g>);
+        el.push(<line key="pl" x1={425} y1={ty+4} x2={810} y2={ty+4} stroke={C.brd} strokeWidth={.5}/>);
+        ty+=14;
+        sites.forEach((s,i)=>{
+          el.push(<g key={`pm${i}`}>
+            <text x={425} y={ty} fill={RC[s.r]} fontSize={7.5}>{s.city}, {s.co}</text>
+            <text x={525} y={ty} fill={C.mrk} fontSize={7} fontWeight={600}>{s.mx}</text>
+            <text x={580} y={ty} fill={C.zs} fontSize={7.5} fontWeight={600}>{s.pop}</text>
+            <rect x={675} y={ty-9} width={44} height={12} rx={6} fill={C.acc} opacity={.15}/>
+            <text x={683} y={ty} fill={C.acc} fontSize={7.5} fontWeight={700}>{s.lat}</text>
+            <text x={748} y={ty} fill={C.dim} fontSize={7.5}>{s.u}</text>
+          </g>);
+          ty+=14;
+        });
+        el.push(<g key="pt"><line x1={425} y1={ty-2} x2={810} y2={ty-2} stroke={C.brd} strokeWidth={.5}/><text x={425} y={ty+10} fill={C.mrk} fontSize={7.5} fontWeight={600}>Private DC: MX95 (2Gbps, 1U rack)</text><text x={650} y={ty+10} fill={C.acc} fontSize={8} fontWeight={700}>All offices &lt;10ms to nearest PoP</text></g>);
+        return el;
+      })()}
+
+      {/* ═══ Supporting Services ═══ */}
+      <rect x={410} y={715} width={200} height={48} rx={6} fill={C.pan} stroke={C.brd} strokeWidth={1}/>
+      <text x={425} y={735} fill={C.yel} fontSize={9} fontWeight={600}>IdP / Azure AD / Okta</text>
+      <text x={425} y={748} fill={C.mut} fontSize={7}>SAML SSO • MFA • Conditional Access</text>
+
+      <rect x={620} y={715} width={200} height={48} rx={6} fill={C.pan} stroke={C.brd} strokeWidth={1}/>
+      <text x={635} y={735} fill={C.zs} fontSize={9} fontWeight={600}>ZDX — Digital Experience</text>
+      <text x={635} y={748} fill={C.mut} fontSize={7}>End-to-end user experience monitoring</text>
+
+      <rect x={410} y={775} width={200} height={48} rx={6} fill={C.pan} stroke={C.brd} strokeWidth={1}/>
+      <text x={425} y={795} fill={C.blu} fontSize={9} fontWeight={600}>SIEM (Nanolog / LSS)</text>
+      <text x={425} y={808} fill={C.mut} fontSize={7}>Real-time log streaming to SOC</text>
+
+      <rect x={620} y={775} width={200} height={48} rx={6} fill={C.pan} stroke={C.brd} strokeWidth={1}/>
+      <text x={635} y={795} fill={C.zs} fontSize={9} fontWeight={600}>Central Authority</text>
+      <text x={635} y={808} fill={C.mut} fontSize={7}>Policy engine • Config • Updates</text>
+
+      {/* Region stats */}
+      <rect x={410} y={838} width={415} height={36} rx={6} fill={C.pan} stroke={C.brd} strokeWidth={.5}/>
+      {(()=>{
+        const el=[]; let bx=420;
+        regs.forEach((reg)=>{
+          const ru=reg.s.reduce((a,b)=>a+b.u,0), pct=Math.round(ru/total*100);
+          el.push(<g key={`sb${reg.n}`}><rect x={bx} y={844} width={90} height={24} rx={4} fill={reg.c} opacity={.08}/><text x={bx+6} y={860} fill={reg.c} fontSize={8} fontWeight={600}>{reg.n} {ru}</text><text x={bx+68} y={860} fill={reg.c} fontSize={7} opacity={.6}>{pct}%</text></g>);
+          bx+=100;
+        });
+        return el;
+      })()}
+
+      {/* ═══ RIGHT-TOP: Private DC ═══ */}
+      <rect x={870} y={15} width={220} height={420} rx={12} fill={C.accD} stroke={C.acc} strokeWidth={.5} strokeDasharray="4 4" opacity={.3}/>
+      <text x={888} y={40} fill={C.acc} fontSize={11} fontWeight={700} letterSpacing={2}>PRIVATE DC</text>
+      <text x={888} y={54} fill={C.mut} fontSize={8}>Internal Apps + Services</text>
+
+      {/* Meraki MX95 at DC Edge */}
+      <rect x={885} y={68} width={190} height={52} rx={6} fill={C.pan} stroke={C.mrk} strokeWidth={1.5}/>
+      <rect x={893} y={75} width={18} height={11} rx={2} fill="none" stroke={C.mrk} strokeWidth={1.2}/>
+      <circle cx={899} cy={80.5} r={1} fill={C.mrk}/><circle cx={903} cy={80.5} r={1} fill={C.mrk}/>
+      <text x={916} y={82} fill={C.mrk} fontSize={9.5} fontWeight={700}>Meraki MX95</text>
+      <text x={916} y={94} fill={C.mut} fontSize={7}>DC Edge FW • 2Gbps • 1U Rack</text>
+      <text x={916} y={106} fill={C.mut} fontSize={7}>Inter-VLAN routing • NAT • ACLs</text>
+      <AD d="M 980 120 L 980 128" c={C.mrk} dl={0}/>
+
+      {/* App Connectors DC */}
+      <rect x={885} y={128} width={190} height={58} rx={6} fill={C.pan} stroke={C.acc} strokeWidth={1.5}/>
+      <Pulse cx={898} cy={148} c={C.acc}/>
+      <text x={910} y={147} fill={C.txt} fontSize={9.5} fontWeight={700}>App Connectors x2</text>
+      <text x={910} y={160} fill={C.mut} fontSize={7}>RHEL 9 VMs • HA pair • Outbound TLS</text>
+      <text x={910} y={172} fill={C.acc} fontSize={6.5} fontWeight={600}>→ Outbound to ZPA Service Edge</text>
+
+      <AD d="M 980 186 L 980 200" c={C.acc} dl={0}/>
+
+      {[
+        {y:200,l:"Application Servers",s:"Internal ERP / CRM / HR"},
+        {y:246,l:"File & Storage",s:"NAS • DFS • File shares"},
+        {y:292,l:"Database Servers",s:"SQL • PostgreSQL • Internal"},
+        {y:338,l:"AD / LDAP / DNS",s:"Domain controllers • DNS"},
+        {y:384,l:"Dev / Build / CI",s:"Jenkins • GitLab • Tools"},
+        {y:420,l:"Management / IPMI",s:"Infrastructure management"},
+      ].map((svc,i)=>
+        <g key={`dc${i}`}>
+          <rect x={885} y={svc.y} width={190} height={38} rx={5} fill={C.pan} stroke={C.brd} strokeWidth={1}/>
+          <text x={898} y={svc.y+16} fill={C.txt} fontSize={8.5} fontWeight={600}>{svc.l}</text>
+          <text x={898} y={svc.y+28} fill={C.mut} fontSize={7}>{svc.s}</text>
+        </g>
+      )}
+
+      <text x={898} y={425} fill={C.dim} fontSize={6.5}>No inbound ports • No VPN concentrator</text>
+
+      {/* ═══ RIGHT-BOTTOM: AWS ═══ */}
+      <rect x={870} y={450} width={220} height={435} rx={12} fill={C.awsD} stroke={C.aws} strokeWidth={.5} strokeDasharray="4 4" opacity={.4}/>
+      <text x={888} y={473} fill={C.aws} fontSize={11} fontWeight={700} letterSpacing={2}>AWS CLOUD</text>
+      <text x={888} y={487} fill={C.mut} fontSize={8}>VPC 10.0.0.0/16 — Production</text>
+
+      {/* App Connectors AWS */}
+      <rect x={885} y={498} width={190} height={58} rx={6} fill={C.pan} stroke={C.acc} strokeWidth={1.5}/>
+      <Pulse cx={898} cy={518} c={C.acc} dl={.5}/>
+      <text x={910} y={517} fill={C.txt} fontSize={9.5} fontWeight={700}>App Connectors x2</text>
+      <text x={910} y={530} fill={C.mut} fontSize={7}>c4.xlarge EC2 • Multi-AZ HA</text>
+      <text x={910} y={542} fill={C.acc} fontSize={6.5} fontWeight={600}>→ Outbound to ZPA Service Edge</text>
+
+      <AD d="M 980 556 L 980 570" c={C.acc} dl={.2}/>
+
+      {[
+        {y:570,l:"Application Servers",s:"EC2 / ECS — 10.0.10.0/24"},
+        {y:614,l:"Database Tier",s:"RDS / Aurora — 10.0.20.0/24"},
+        {y:658,l:"File Storage",s:"EFS / S3 — 10.0.30.0/24"},
+        {y:702,l:"Container Platform",s:"EKS / Fargate — 10.0.40.0/24"},
+        {y:746,l:"Route 53 DNS",s:"Private Zones — 10.0.1.53"},
+        {y:790,l:"CloudWatch / Trail",s:"Monitoring + Audit Logs"},
+      ].map((svc,i)=>
+        <g key={`aw${i}`}>
+          <rect x={885} y={svc.y} width={190} height={38} rx={5} fill={C.pan} stroke={C.brd} strokeWidth={1}/>
+          <text x={898} y={svc.y+16} fill={C.txt} fontSize={8.5} fontWeight={600}>{svc.l}</text>
+          <text x={898} y={svc.y+28} fill={C.mut} fontSize={7}>{svc.s}</text>
+        </g>
+      )}
+
+      <text x={898} y={845} fill={C.dim} fontSize={6.5}>No Direct Connect / X-Connect needed</text>
+      <text x={898} y={856} fill={C.dim} fontSize={6.5}>ZPA brokers access via App Connectors</text>
+      <text x={898} y={867} fill={C.dim} fontSize={6.5}>NAT GW → outbound only → ZPA cloud</text>
+
+      {/* ═══ FAR RIGHT: Architecture Benefits ═══ */}
+      <rect x={1108} y={15} width={217} height={870} rx={12} fill="#12151f" stroke={C.zs} strokeWidth={.5} strokeDasharray="4 4" opacity={.3}/>
+      <text x={1125} y={40} fill={C.zs} fontSize={10} fontWeight={700} letterSpacing={2}>SSE BENEFITS</text>
+
+      {[
+        {y:55,t:"Zero Trust Access",d:"App-level access only. Users never touch the network. No lateral movement possible.",c:C.acc,ic:"🔒"},
+        {y:120,t:"Global Low Latency",d:`All 11 offices <10ms to nearest PoP. India (190 users) served by Mumbai, Delhi & Chennai PoPs locally.`,c:C.zs,ic:"⚡"},
+        {y:195,t:"No VPN Infrastructure",d:"No concentrators, no PKI, no cert management, no split tunnel config. ZPA replaces it all.",c:C.red,ic:"🚫"},
+        {y:270,t:"Identical Security Everywhere",d:"Same policy on-net and off-net. Roaming users get identical protection via ZCC.",c:C.pur,ic:"🛡"},
+        {y:345,t:"Cloud-Native HA",d:"160+ PoPs, auto-failover, elastic scaling. No single point of failure.",c:C.yel,ic:"♾️"},
+        {y:420,t:"Full SSL Inspection",d:"All traffic decrypted + inspected at cloud scale. Sandbox, DLP, CASB inline.",c:C.zs,ic:"🔍"},
+        {y:495,t:"Apps Invisible",d:"Private apps never exposed to internet. App Connectors are outbound-only — zero attack surface.",c:C.acc,ic:"👁"},
+        {y:570,t:"Meraki Simplicity",d:"MX handles edge routing + local FW. IPsec to ZIA. Cloud Dashboard for all 11 sites.",c:C.mrk,ic:"📡"},
+        {y:645,t:"AWS Native Integration",d:"App Connectors via AMI + Terraform. Multi-AZ. No Direct Connect needed for user access.",c:C.aws,ic:"☁️"},
+        {y:720,t:"India Advantage",d:"190 users (59%) served by local PoPs in Mumbai, Delhi, Chennai. <6ms vs 150ms+ to UK VPN.",c:C.yel,ic:"🇮🇳"},
+        {y:795,t:"Unified Management",d:"Single admin portal for ZIA + ZPA policy. NSS log streaming to SIEM. ZDX for user experience.",c:C.blu,ic:"🎛"},
+      ].map((b,i)=>
+        <g key={`b${i}`}>
+          <rect x={1118} y={b.y} width={197} height={58} rx={5} fill={C.pan} stroke={b.c} strokeWidth={.5} opacity={.8}/>
+          <text x={1128} y={b.y+14} fill={b.c} fontSize={9} fontWeight={700}>{b.ic} {b.t}</text>
+          <text x={1128} y={b.y+28} fill={C.mut} fontSize={6.5}>{b.d.substring(0,55)}</text>
+          <text x={1128} y={b.y+38} fill={C.mut} fontSize={6.5}>{b.d.substring(55,110)}</text>
+          {b.d.length>110&&<text x={1128} y={b.y+48} fill={C.mut} fontSize={6.5}>{b.d.substring(110)}</text>}
+        </g>
+      )}
+
+      {/* ═══ Internet Breakout ═══ */}
+      <rect x={855} y={130} width={80} height={60} rx={6} fill="none" stroke={C.ora} strokeWidth={.5} strokeDasharray="3 3" opacity={.4}/>
+      <text x={873} y={155} fill={C.ora} fontSize={8} fontWeight={600}>Internet</text>
+      <text x={868} y={167} fill={C.ora} fontSize={7} opacity={.6}>SaaS / Web</text>
+      <text x={867} y={179} fill={C.dim} fontSize={6}>Inspected by ZIA</text>
+
+      {/* ═══ Bottom flow bar ═══ */}
+      <rect x={15} y={H-80} width={W-30} height={65} rx={8} fill={C.pan} stroke={C.brd} strokeWidth={.5}/>
+      <text x={35} y={H-58} fill={C.zs} fontSize={9} fontWeight={700}>TRAFFIC FLOWS</text>
+      <text x={35} y={H-42} fill={C.ora} fontSize={8} fontWeight={600}>Internet/SaaS:</text>
+      <text x={135} y={H-42} fill={C.mut} fontSize={7.5}>Device (ZCC) → Meraki MX (IPsec) → Nearest ZIA PoP → SSL Inspect → SWG/FW/DLP/CASB → Internet</text>
+      <text x={35} y={H-28} fill={C.acc} fontSize={8} fontWeight={600}>Private Apps:</text>
+      <text x={135} y={H-28} fill={C.mut} fontSize={7.5}>Device (ZCC) → ZPA Service Edge (nearest PoP) ←→ App Connector (DC or AWS) → Application [user never on network]</text>
+
+    </svg>
+
+    {/* Bottom summary cards */}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(200px, 1fr))",gap:12,marginTop:16}}>
+      {[
+        {t:"ZIA — Internet Security",d:"Full SSE stack: SWG, CASB, DLP, FWaaS, Sandbox, Browser Isolation. All traffic inspected including SSL. Meraki tunnels to nearest PoP.",c:C.zs,i:"🌐"},
+        {t:"ZPA — Private Access",d:"ZTNA replaces VPN. App Connectors in DC + AWS. Users access apps directly, never the network. Zero attack surface.",c:C.acc,i:"🔐"},
+        {t:"Meraki MX Edge",d:"L3/L7 firewall at every site. IPsec to ZIA. DHCP, NAT, SD-WAN routing. Cloud-managed via Meraki Dashboard.",c:C.mrk,i:"📡"},
+        {t:"Latency Win",d:"Every office <10ms to nearest Zscaler PoP. India sites served locally from Mumbai/Delhi/Chennai — vs 150ms+ to a UK-based VPN.",c:C.acc,i:"⚡"},
+        {t:"AWS Integration",d:"App Connectors deployed as EC2 (AMI + Terraform). Multi-AZ HA. NAT Gateway outbound. No Direct Connect needed for user access.",c:C.aws,i:"☁️"},
+        {t:"Unified Policy",d:"Single admin console for all 322 users. IdP/SAML SSO + MFA. ZDX experience monitoring. NSS log streaming to SIEM.",c:C.zs,i:"🎛"},
+      ].map((c,i)=>
+        <div key={i} style={{background:C.pan,border:`1px solid ${C.brd}`,borderRadius:8,padding:"14px 16px",borderTop:`2px solid ${c.c}`}}>
+          <div style={{fontSize:14,marginBottom:6}}>{c.i} <span style={{color:C.txt,fontSize:12,fontWeight:600}}>{c.t}</span></div>
+          <div style={{color:C.mut,fontSize:10,lineHeight:1.5}}>{c.d}</div>
+        </div>
+      )}
+    </div>
+  </div>
+  </div>);
+}
+const root=ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App/>);
+</script>
+</body>
+</html>
